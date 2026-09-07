@@ -142,7 +142,7 @@
     border-radius: 16px;
     overflow: hidden;
     background: var(--mono-bg);
-    aspect-ratio: 4 / 5;
+    aspect-ratio: 4 / 3;
     box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 12px 28px -18px rgba(0,0,0,0.5);
   }
 
@@ -227,8 +227,8 @@
     left: 6%;
     right: 6%;
     top: 50%;
-    height: 84px;
-    transform: translateY(-42px);
+    height: 60px;
+    transform: translateY(-30px);
     border-left: 2px solid rgba(255,59,59,0.9);
     border-right: 2px solid rgba(255,59,59,0.9);
   }
@@ -237,7 +237,7 @@
     position: absolute;
     left: 50%;
     top: 50%;
-    transform: translate(-50%, calc(-50% - 32px));
+    transform: translate(-50%, calc(-50% - 28px));
     max-width: 88%;
     padding: 6px 12px;
     border-radius: 8px;
@@ -267,7 +267,43 @@
     100% { background: rgba(18, 22, 28, 0.88); }
   }
 
+  .readout-chip.chip-miss {
+    color: #FF9B9D;
+    border-color: rgba(255,107,110,0.5);
+  }
+
   /* ---- Controls ---- */
+
+  .shutter-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .shutter-btn {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    border: 4px solid var(--surface-2);
+    background: var(--accent);
+    color: var(--accent-contrast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 8px 18px -8px rgba(0,0,0,0.4);
+    transition: transform .1s ease;
+  }
+
+  .shutter-btn:active { transform: scale(0.92); }
+  .shutter-btn:disabled { opacity: 0.55; }
+
+  .shutter-caption {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
 
   .toggle-btn {
     display: flex;
@@ -275,20 +311,21 @@
     justify-content: center;
     gap: 8px;
     width: 100%;
-    padding: 13px 16px;
+    padding: 11px 16px;
     border: none;
     border-radius: 12px;
     font-family: inherit;
-    font-size: 14.5px;
+    font-size: 13.5px;
     font-weight: 600;
     cursor: pointer;
-    background: var(--accent);
-    color: var(--accent-contrast);
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
     transition: transform .08s ease, opacity .15s ease;
   }
 
   .toggle-btn:active { transform: scale(0.98); }
-  .toggle-btn.is-stop { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+  .toggle-btn.is-stop { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
 
   .manual-group {
     display: flex;
@@ -473,7 +510,7 @@
       </span>
       <div>
         <h1>바코드 리더</h1>
-        <p>카메라 중앙 라인으로 즉시 판독</p>
+        <p>라인에 맞추고 버튼을 탭해 스캔</p>
       </div>
     </div>
     <span id="db-badge">DB 137건</span>
@@ -485,19 +522,26 @@
 
       <div class="placeholder" id="placeholder">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-        <p>카메라를 시작하면<br>가운데 라인 위에 스캔 값이 표시됩니다</p>
+        <p>카메라를 시작한 뒤<br>버튼을 눌러 한 장씩 스캔하세요</p>
       </div>
 
       <div class="laser-track">
         <div class="laser-frame"></div>
-        <div class="readout-chip" id="readout-chip">스캔 대기 중…</div>
+        <div class="readout-chip" id="readout-chip">탭해서 스캔</div>
         <div class="laser-line"></div>
       </div>
     </div>
 
+    <div class="shutter-wrap" id="shutter-wrap" hidden>
+      <button class="shutter-btn" id="shutter-btn" aria-label="바코드 스캔">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+      </button>
+      <span class="shutter-caption">탭해서 스캔</span>
+    </div>
+
     <button class="toggle-btn" id="toggle-btn">
       <svg id="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
-      <span id="toggle-label">스캔 시작</span>
+      <span id="toggle-label">카메라 시작</span>
     </button>
 
     <p class="engine-note" id="engine-note"></p>
@@ -592,6 +636,8 @@
   const toggleBtn = document.getElementById('toggle-btn');
   const toggleIcon = document.getElementById('toggle-icon');
   const toggleLabel = document.getElementById('toggle-label');
+  const shutterWrap = document.getElementById('shutter-wrap');
+  const shutterBtn = document.getElementById('shutter-btn');
   const engineNote = document.getElementById('engine-note');
   const resBarcode = document.getElementById('res-barcode');
   const resSerial = document.getElementById('res-serial');
@@ -607,11 +653,10 @@
   let engine = null; // 'native' | 'quagga'
   let isScanning = false;
   let flashTimer = null;
-  let nativeStream = null;
-  let nativeVideoEl = null;
-  let nativeLoopId = null;
-  let lastNativeCode = '';
-  let lastNativeAt = 0;
+  let missTimer = null;
+  let cameraStream = null;
+  let videoEl = null;
+  let detector = null;
 
   function setResult(code) {
     const trimmed = code.trim();
@@ -776,8 +821,22 @@
 
   function onBarcodeDetected(code) {
     if (!code) return;
+    clearTimeout(missTimer);
+    readoutChip.classList.remove('chip-miss');
     setResult(code);
     if (navigator.vibrate) navigator.vibrate(120);
+  }
+
+  function showScanMiss() {
+    readoutChip.classList.remove('has-value');
+    readoutChip.classList.add('chip-miss');
+    readoutChip.textContent = '인식 실패 · 다시 시도하세요';
+    if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+    clearTimeout(missTimer);
+    missTimer = setTimeout(() => {
+      readoutChip.classList.remove('chip-miss');
+      readoutChip.textContent = '탭해서 스캔';
+    }, 1400);
   }
 
   function markLive() {
@@ -785,23 +844,27 @@
     scanFrame.classList.add('is-live');
     toggleBtn.classList.add('is-stop');
     toggleIcon.innerHTML = ICON_STOP;
-    toggleLabel.textContent = '스캔 중지';
-    readoutChip.textContent = '스캔 대기 중…';
-    readoutChip.classList.remove('has-value');
+    toggleLabel.textContent = '카메라 중지';
+    shutterWrap.hidden = false;
+    readoutChip.textContent = '탭해서 스캔';
+    readoutChip.classList.remove('has-value', 'chip-miss');
   }
 
   function resetToggle() {
     isScanning = false;
     toggleBtn.classList.remove('is-stop');
     toggleIcon.innerHTML = ICON_PLAY;
-    toggleLabel.textContent = '스캔 시작';
+    toggleLabel.textContent = '카메라 시작';
+    shutterWrap.hidden = true;
   }
 
-  // ---- Engine A: native BarcodeDetector (정확도 우선) ----
+  // 카메라 미리보기는 항상 이 함수 하나로 켠다 - 연속 인식 루프는 돌리지 않고,
+  // 셔터 버튼을 탭할 때마다 그 순간의 프레임 한 장만 판독한다(오탐/값 요동 방지).
+  async function startScanner() {
+    if (isScanning) return;
 
-  async function startNativeScanner() {
     try {
-      nativeStream = await navigator.mediaDevices.getUserMedia({
+      cameraStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
           width: { ideal: 1280 },
@@ -812,143 +875,107 @@
     } catch (err) {
       console.error(err);
       showPlaceholder(describeCameraError(err), true);
-      resetToggle();
       return;
     }
 
-    nativeVideoEl = document.createElement('video');
-    nativeVideoEl.setAttribute('playsinline', '');
-    nativeVideoEl.setAttribute('muted', '');
-    nativeVideoEl.muted = true;
-    nativeVideoEl.autoplay = true;
-    nativeVideoEl.srcObject = nativeStream;
+    videoEl = document.createElement('video');
+    videoEl.setAttribute('playsinline', '');
+    videoEl.setAttribute('muted', '');
+    videoEl.muted = true;
+    videoEl.autoplay = true;
+    videoEl.srcObject = cameraStream;
     interactiveEl.innerHTML = '';
-    interactiveEl.appendChild(nativeVideoEl);
+    interactiveEl.appendChild(videoEl);
 
     try {
-      await nativeVideoEl.play();
+      await videoEl.play();
     } catch (err) {
       // Safari 등에서 autoplay가 막히면 첫 터치 이후 자동 재생됨 - 치명적이지 않음
     }
 
-    let detector;
-    try {
-      detector = new BarcodeDetector({
-        formats: ['code_128', 'ean_13', 'ean_8', 'code_39', 'upc_a', 'upc_e']
-      });
-    } catch (err) {
-      // 이 브라우저는 요청한 포맷을 지원하지 않음 - Quagga로 폴백
-      stopNativeInternals();
-      startQuaggaScanner();
-      return;
-    }
-
-    engine = 'native';
-    markLive();
-    engineNote.textContent = '';
-
-    const loop = () => {
-      if (engine !== 'native' || !isScanning) return;
-      if (nativeVideoEl.readyState >= 2) {
-        detector.detect(nativeVideoEl).then((codes) => {
-          if (codes && codes.length > 0) {
-            const value = codes[0].rawValue;
-            const now = Date.now();
-            if (value !== lastNativeCode || now - lastNativeAt > 1200) {
-              lastNativeCode = value;
-              lastNativeAt = now;
-              onBarcodeDetected(value);
-            }
-          }
-        }).catch(() => {});
+    // Code 128처럼 문자+숫자+하이픈이 섞인 바코드는 브라우저 네이티브
+    // BarcodeDetector가 QuaggaJS보다 훨씬 정확하게 읽는다. 지원하는
+    // 브라우저(Android Chrome 등)에서는 그걸 쓰고, 없으면 셔터를 누를
+    // 때 캡처한 정지 프레임을 QuaggaJS의 decodeSingle로 판독한다.
+    if (hasNativeDetector) {
+      try {
+        detector = new BarcodeDetector({
+          formats: ['code_128', 'ean_13', 'ean_8', 'code_39', 'upc_a', 'upc_e']
+        });
+        engine = 'native';
+        engineNote.textContent = '';
+      } catch (err) {
+        detector = null;
+        engine = 'quagga';
+        engineNote.textContent = '호환 모드로 스캔 중 (일부 구형 브라우저)';
       }
-      nativeLoopId = requestAnimationFrame(loop);
-    };
-    nativeLoopId = requestAnimationFrame(loop);
-  }
-
-  function stopNativeInternals() {
-    if (nativeLoopId) cancelAnimationFrame(nativeLoopId);
-    nativeLoopId = null;
-    if (nativeStream) {
-      nativeStream.getTracks().forEach((t) => t.stop());
-      nativeStream = null;
-    }
-    nativeVideoEl = null;
-    interactiveEl.innerHTML = '';
-    lastNativeCode = '';
-  }
-
-  function stopNativeScanner() {
-    stopNativeInternals();
-    resetToggle();
-    showPlaceholder('카메라를 시작하면<br>가운데 라인 위에 스캔 값이 표시됩니다', false);
-  }
-
-  // ---- Engine B: QuaggaJS (BarcodeDetector 미지원 브라우저용 폴백) ----
-
-  function onQuaggaDetected(result) {
-    const code = result && result.codeResult && result.codeResult.code;
-    if (code) onBarcodeDetected(code);
-  }
-
-  function startQuaggaScanner() {
-    engineNote.textContent = '호환 모드로 스캔 중 (일부 구형 브라우저)';
-    Quagga.init({
-      inputStream: {
-        name: 'Live',
-        type: 'LiveStream',
-        target: interactiveEl,
-        constraints: {
-          width: { ideal: 1280 },
-          height: { ideal: 960 },
-          facingMode: { ideal: 'environment' }
-        }
-      },
-      decoder: {
-        readers: ['code_128_reader', 'ean_reader', 'ean_8_reader', 'code_39_reader']
-      },
-      locate: true
-    }, function (err) {
-      if (err) {
-        console.error(err);
-        showPlaceholder(describeCameraError(err), true);
-        resetToggle();
-        return;
-      }
+    } else {
       engine = 'quagga';
-      Quagga.start();
-      markLive();
-    });
+      engineNote.textContent = '호환 모드로 스캔 중 (일부 구형 브라우저)';
+    }
 
-    Quagga.onDetected(onQuaggaDetected);
-  }
-
-  function stopQuaggaScanner() {
-    Quagga.offDetected(onQuaggaDetected);
-    Quagga.stop();
-    resetToggle();
-    showPlaceholder('카메라를 시작하면<br>가운데 라인 위에 스캔 값이 표시됩니다', false);
-    engineNote.textContent = '';
-  }
-
-  function startScanner() {
-    if (isScanning) return;
-    if (hasNativeDetector) startNativeScanner();
-    else startQuaggaScanner();
+    markLive();
   }
 
   function stopScanner() {
     if (!isScanning) return;
-    if (engine === 'native') stopNativeScanner();
-    else stopQuaggaScanner();
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((t) => t.stop());
+      cameraStream = null;
+    }
+    videoEl = null;
+    detector = null;
     engine = null;
+    interactiveEl.innerHTML = '';
+    resetToggle();
+    showPlaceholder('카메라를 시작한 뒤<br>버튼을 눌러 한 장씩 스캔하세요', false);
+    engineNote.textContent = '';
+  }
+
+  function captureAndScan() {
+    if (!isScanning || !videoEl || shutterBtn.disabled) return;
+
+    shutterBtn.disabled = true;
+    clearTimeout(missTimer);
+    readoutChip.classList.remove('has-value', 'chip-miss');
+    readoutChip.textContent = '분석 중…';
+
+    if (engine === 'native' && detector) {
+      detector.detect(videoEl)
+        .then((codes) => {
+          if (codes && codes.length > 0) onBarcodeDetected(codes[0].rawValue);
+          else showScanMiss();
+        })
+        .catch(() => showScanMiss())
+        .finally(() => { shutterBtn.disabled = false; });
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoEl.videoWidth || 1280;
+    canvas.height = videoEl.videoHeight || 960;
+    canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+    Quagga.decodeSingle({
+      src: canvas.toDataURL('image/png'),
+      numOfWorkers: 0,
+      inputStream: { size: Math.max(canvas.width, canvas.height) },
+      decoder: { readers: ['code_128_reader', 'ean_reader', 'ean_8_reader', 'code_39_reader'] },
+      locate: true
+    }, (result) => {
+      shutterBtn.disabled = false;
+      const code = result && result.codeResult && result.codeResult.code;
+      if (code) onBarcodeDetected(code);
+      else showScanMiss();
+    });
   }
 
   toggleBtn.addEventListener('click', () => {
     if (isScanning) stopScanner();
     else startScanner();
   });
+
+  shutterBtn.addEventListener('click', captureAndScan);
 </script>
 </body>
 </html>
