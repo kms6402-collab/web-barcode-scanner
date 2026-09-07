@@ -127,6 +127,11 @@
     white-space: nowrap;
   }
 
+  #db-badge.is-error {
+    color: var(--danger);
+    background: var(--danger-soft);
+  }
+
   main {
     flex: 1;
     padding: 16px 18px 28px;
@@ -142,7 +147,7 @@
     border-radius: 16px;
     overflow: hidden;
     background: var(--mono-bg);
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 8 / 3;
     box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 12px 28px -18px rgba(0,0,0,0.5);
   }
 
@@ -227,8 +232,8 @@
     left: 6%;
     right: 6%;
     top: 50%;
-    height: 60px;
-    transform: translateY(-30px);
+    height: 34px;
+    transform: translateY(-17px);
     border-left: 2px solid rgba(255,59,59,0.9);
     border-right: 2px solid rgba(255,59,59,0.9);
   }
@@ -237,7 +242,7 @@
     position: absolute;
     left: 50%;
     top: 50%;
-    transform: translate(-50%, calc(-50% - 28px));
+    transform: translate(-50%, calc(-50% - 21px));
     max-width: 88%;
     padding: 6px 12px;
     border-radius: 8px;
@@ -513,7 +518,7 @@
         <p>라인에 맞추고 버튼을 탭해 스캔</p>
       </div>
     </div>
-    <span id="db-badge">DB 137건</span>
+    <span id="db-badge">DB 불러오는 중…</span>
   </header>
 
   <main>
@@ -576,58 +581,67 @@
 </div>
 
 <script>
-  // 업로드된 바코드 → 시리얼(S/N) 매핑 데이터
-  const barcodeDatabase = {
-    "N16-16": "WM052534W-51422", "N16-17": "WM052534W-52383", "N16-18": "WM052534W-52365",
-    "N16-19": "WM052534W-51404", "N16-20": "WM052534W-52343", "N16-21": "WM052534W-52511",
-    "N20-39": "WM052534W-51695", "N20-40": "WM052534W-51400", "N20-41": "WM052534W-51242",
-    "N20-42": "WM052534W-51164", "N20-43": "WM052534W-52279", "N20-44": "WM052534W-51333",
-    "N21-45": "WM052534W-51103", "N21-46": "WM052534W-51290", "N21-47": "WM052534W-52203",
-    "N21-48": "WM052534W-51252", "N21-49": "WM052534W-52504", "N21-50": "WM052534W-52175",
-    "N22-51": "WM052534W-51261", "N22-52": "WM052534W-51395", "N22-53": "WM052533W-51615",
-    "N22-54": "WM052534W-52028", "N22-55": "WM052534W-51063", "N22-56": "WM052534W-52200",
-    "N23-57": "WM052534W-51859", "N23-58": "WM052533W-51915", "N23-59": "WM052534W-52145",
-    "N23-60": "WM052534W-50177", "N24-61": "WM052534W-51632", "N24-62": "WM052534W-52019",
-    "N24-63": "WM052534W-52208", "N24-64": "WM052534W-51169", "N24-65": "WM052534W-51357",
-    "N24-66": "WM052534W-51235", "N24-67": "WM052534W-51041", "N24-68": "WM052534W-51871",
-    "N24-69": "WM052534W-52239", "N26-78": "WM052534W-51362", "N26-79": "WM052534W-52049",
-    "N26-80": "WM052533W-51328", "N26-81": "WM052533W-51346", "N26-82": "WM052533W-51411",
-    "N26-83": "WM052533W-51397", "N26-84": "WM052533W-51384", "N27-85": "WM052533W-51385",
-    "N27-86": "WM052533W-51246", "N27-87": "WM052534W-51592", "N27-88": "WM052534W-51248",
-    "N27-89": "WM052534W-51205", "N27-90": "WM052534W-51296", "N27-91": "WM052534W-51543",
-    "N27-92": "WM052534W-51274", "S05-35": "WM052534W-51120", "S05-36": "WM052533W-51422",
-    "S05-37": "WM052534W-51209", "S05-38": "WM052534W-51168", "S05-39": "WM052534W-51170",
-    "S05-40": "WM052534W-51418", "S08-54": "WM052534W-51853", "S08-55": "WM052534W-51161",
-    "S08-56": "WM052534W-51027", "S08-57": "WM052534W-51439", "S08-58": "WM052534W-51355",
-    "S08-59": "WM052534W-51339", "S09-60": "WM052534W-51604", "S09-61": "WM052534W-51073",
-    "S09-62": "WM052534W-51236", "S09-63": "WM052534W-51047", "S09-64": "WM052534W-51249",
-    "S09-65": "WM052534W-51407", "S10-66": "WM052534W-51815", "S10-67": "WM052534W-51053",
-    "S10-68": "WM052534W-51547", "S10-69": "WM052534W-51150", "S10-70": "WM052534W-51477",
-    "S10-71": "WM052534W-51200", "S11-72": "WM052534W-51483", "S11-73": "WM052534W-51718",
-    "S11-74": "WM052534W-52039", "S11-75": "WM052534W-51675", "S11-76": "WM052534W-52324",
-    "S11-77": "WM052534W-52136", "S12-78": "WM052534W-52295", "S12-79": "WM052534W-52232",
-    "S12-80": "WM052534W-52575", "S12-81": "WM052534W-52227", "S12-82": "WM052534W-52351",
-    "S12-83": "WM052534W-51099", "S13-84": "WM052534W-52593", "S13-85": "WM052534W-52045",
-    "S13-86": "WM052534W-51353", "S13-87": "WM052534W-51097", "S13-88": "WM052534W-51677",
-    "S13-89": "WM052533W-51311", "S14-90": "WM052534W-52242", "S14-91": "WM052534W-52147",
-    "S14-92": "WM052534W-52336", "S14-93": "WM052534W-51226", "S14-94": "WM052534W-51204",
-    "S14-95": "WM052534W-51867", "S15-96": "WM052533W-51362", "S15-97": "WM052534W-52101",
-    "S15-98": "WM052534W-51752", "S15-99": "WM052534W-51234", "S15-100": "WM052534W-52529",
-    "S16-101": "WM052534W-51250", "S16-102": "WM052534W-51071", "S16-103": "WM052534W-51379",
-    "S16-104": "WM052534W-52277", "S16-105": "WM052534W-51481", "S16-106": "WM052534W-51472",
-    "S17-107": "WM052534W-51180", "S17-108": "WM052534W-51113", "S17-109": "WM052534W-50339",
-    "S17-110": "WM052533W-51255", "S17-111": "WM052534W-50979", "S18-112": "WM052534W-51337",
-    "S18-113": "WM052534W-51597", "S18-114": "WM052534W-51059", "S18-115": "WM052534W-51900",
-    "S18-116": "WM052534W-51961", "S18-117": "WM052534W-52221", "S19-118": "WM052534W-51484",
-    "S19-119": "WM052534W-51570", "S19-120": "WM052534W-52584", "S19-121": "WM052534W-51559",
-    "S19-122": "WM052533W-51382", "S19-123": "WM052534W-52211", "S20-124": "WM052533W-51371",
-    "S20-125": "WM052534W-51091", "S20-126": "WM052534W-51541", "S20-127": "WM052534W-51107",
-    "S20-128": "WM052534W-51210", "S20-129": "WM052534W-51505", "S21-130": "WM052534W-51125",
-    "S21-131": "WM052534W-51298", "S21-132": "WM052533W-51341", "S21-133": "WM052534W-51239",
-    "S21-134": "WM052534W-52466", "S21-135": "WM052534W-51130", "S22-136": "WM052534W-51376"
-  };
+  // 바코드 태그 ↔ 시리얼(S/N) 매핑 데이터는 코드에 박아두지 않고 같은 폴더의
+  // data.csv에서 불러온다 - 데이터만 갈아끼우면 코드를 건드릴 필요가 없다.
+  let barcodeDatabase = {};
+  const dbBadge = document.getElementById('db-badge');
 
-  document.getElementById('db-badge').textContent = 'DB ' + Object.keys(barcodeDatabase).length + '건';
+  // 쌍따옴표로 감싼 필드 안의 콤마/개행까지 다루는 최소 CSV 파서.
+  function parseCsv(text) {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else { field += c; }
+      } else if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        row.push(field); field = '';
+      } else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = '';
+        if (row.some((v) => v !== '')) rows.push(row);
+        row = [];
+      } else {
+        field += c;
+      }
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  async function loadDatabase() {
+    try {
+      const res = await fetch('data.csv', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = parseCsv(await res.text());
+      const [header, ...body] = rows;
+      const tagCol = Math.max(header.indexOf('tag'), 0);
+      const serialCol = Math.max(header.indexOf('serial'), 1);
+
+      const db = {};
+      body.forEach((r) => {
+        const tag = (r[tagCol] || '').trim();
+        const serial = (r[serialCol] || '').trim();
+        if (tag && serial) db[tag] = serial;
+      });
+      barcodeDatabase = db;
+      dbBadge.textContent = 'DB ' + Object.keys(barcodeDatabase).length + '건';
+      dbBadge.classList.remove('is-error');
+    } catch (err) {
+      console.error('data.csv 로드 실패:', err);
+      dbBadge.textContent = 'DB 로드 실패';
+      dbBadge.classList.add('is-error');
+    }
+  }
+
+  loadDatabase();
 
   const scanFrame = document.getElementById('scan-frame');
   const interactiveEl = document.getElementById('interactive');
