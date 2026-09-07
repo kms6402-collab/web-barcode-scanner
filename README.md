@@ -22,12 +22,12 @@ GitHub Pages로 이 저장소를 배포하면 `https://kms6402-collab.github.io/
 
 ## 데이터 (`data.csv`)
 
-바코드 태그 ↔ 시리얼(S/N) 매핑 데이터는 코드에 박아두지 않고 `data.csv`에서 불러옵니다. `tag,serial` 두 컬럼의 CSV 파일이며, 페이지가 열릴 때 같은 폴더의 `data.csv`를 fetch로 읽어옵니다.
+바코드 태그 ↔ 시리얼(S/N)/MAC 주소/Hostname 매핑 데이터는 코드에 박아두지 않고 `data.csv`에서 불러옵니다. `tag,serial,mac,hostname` 네 컬럼의 CSV 파일이며, 페이지가 열릴 때 같은 폴더의 `data.csv`를 fetch로 읽어옵니다. `mac`/`hostname`은 비워둬도 되며, 값이 있으면 판독 결과 패널에 함께 표시됩니다.
 
 ```csv
-tag,serial
-N16-16,WM052534W-51422
-S08-58,WM052534W-51355
+tag,serial,mac,hostname
+N16-16,WM052534W-51422,AA:BB:CC:11:22:33,switch-1f-01
+S08-58,WM052534W-51355,,
 ```
 
 데이터를 갱신하려면 `index.html`을 건드릴 필요 없이 이 파일만 교체(또는 행 추가/수정)하면 됩니다.

@@ -573,6 +573,14 @@
           <p class="rr-label">매칭된 시리얼 (S/N)</p>
           <p class="rr-value is-empty" id="res-serial">—</p>
         </div>
+        <div class="readout-row">
+          <p class="rr-label">MAC 주소</p>
+          <p class="rr-value is-empty" id="res-mac">—</p>
+        </div>
+        <div class="readout-row">
+          <p class="rr-label">Hostname</p>
+          <p class="rr-value is-empty" id="res-hostname">—</p>
+        </div>
       </div>
     </div>
   </main>
@@ -622,14 +630,25 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const rows = parseCsv(await res.text());
       const [header, ...body] = rows;
-      const tagCol = Math.max(header.indexOf('tag'), 0);
-      const serialCol = Math.max(header.indexOf('serial'), 1);
+      const col = (name, fallback) => {
+        const idx = header.indexOf(name);
+        return idx >= 0 ? idx : fallback;
+      };
+      const tagCol = col('tag', 0);
+      const serialCol = col('serial', 1);
+      const macCol = col('mac', -1);
+      const hostnameCol = col('hostname', -1);
 
       const db = {};
       body.forEach((r) => {
         const tag = (r[tagCol] || '').trim();
         const serial = (r[serialCol] || '').trim();
-        if (tag && serial) db[tag] = serial;
+        if (!tag || !serial) return;
+        db[tag] = {
+          serial,
+          mac: macCol >= 0 ? (r[macCol] || '').trim() : '',
+          hostname: hostnameCol >= 0 ? (r[hostnameCol] || '').trim() : ''
+        };
       });
       barcodeDatabase = db;
       dbBadge.textContent = 'DB ' + Object.keys(barcodeDatabase).length + '건';
@@ -655,6 +674,8 @@
   const engineNote = document.getElementById('engine-note');
   const resBarcode = document.getElementById('res-barcode');
   const resSerial = document.getElementById('res-serial');
+  const resMac = document.getElementById('res-mac');
+  const resHostname = document.getElementById('res-hostname');
 
   const ICON_PLAY = '<polygon points="6 3 20 12 6 21 6 3"></polygon>';
   const ICON_STOP = '<rect x="5" y="5" width="14" height="14" rx="2"></rect>';
@@ -682,7 +703,7 @@
       applyMatch(trimmed, barcodeDatabase[trimmed]);
       return;
     }
-    const exactValueKey = Object.keys(barcodeDatabase).find((k) => barcodeDatabase[k] === trimmed);
+    const exactValueKey = Object.keys(barcodeDatabase).find((k) => barcodeDatabase[k].serial === trimmed);
     if (exactValueKey) {
       applyMatch(exactValueKey, barcodeDatabase[exactValueKey]);
       return;
@@ -692,6 +713,10 @@
     resBarcode.className = 'rr-value';
     resSerial.textContent = '등록되지 않은 바코드입니다';
     resSerial.className = 'rr-value is-miss';
+    resMac.textContent = '—';
+    resMac.className = 'rr-value is-empty';
+    resHostname.textContent = '—';
+    resHostname.className = 'rr-value is-empty';
 
     readoutChip.textContent = trimmed;
     readoutChip.classList.add('has-value', 'flash');
@@ -699,11 +724,15 @@
     flashTimer = setTimeout(() => readoutChip.classList.remove('flash'), 500);
   }
 
-  function applyMatch(key, value) {
+  function applyMatch(key, entry) {
     resBarcode.textContent = key;
     resBarcode.className = 'rr-value';
-    resSerial.textContent = value;
-    resSerial.className = 'rr-value is-hit';
+    resSerial.textContent = entry.serial || '—';
+    resSerial.className = entry.serial ? 'rr-value is-hit' : 'rr-value is-empty';
+    resMac.textContent = entry.mac || '등록된 정보 없음';
+    resMac.className = entry.mac ? 'rr-value is-hit' : 'rr-value is-empty';
+    resHostname.textContent = entry.hostname || '등록된 정보 없음';
+    resHostname.className = entry.hostname ? 'rr-value is-hit' : 'rr-value is-empty';
 
     readoutChip.textContent = key;
     readoutChip.classList.add('has-value', 'flash');
@@ -717,13 +746,16 @@
     }[c]));
   }
 
-  // 대소문자 구분 없이, 태그(키)와 시리얼(값) 양쪽 모두에서 부분 문자열을 찾는다.
+  // 대소문자 구분 없이, 태그/시리얼/MAC/Hostname 전부에서 부분 문자열을 찾는다.
   function searchDatabase(query) {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return Object.entries(barcodeDatabase).filter(
-      ([key, value]) => key.toLowerCase().includes(q) || value.toLowerCase().includes(q)
-    );
+    return Object.entries(barcodeDatabase).filter(([key, entry]) => (
+      key.toLowerCase().includes(q) ||
+      (entry.serial || '').toLowerCase().includes(q) ||
+      (entry.mac || '').toLowerCase().includes(q) ||
+      (entry.hostname || '').toLowerCase().includes(q)
+    ));
   }
 
   function hideSuggestions() {
@@ -741,12 +773,15 @@
       ? `"${escapeHtml(query)}" 일치 ${matches.length}건 중 ${shown.length}건 표시`
       : `"${escapeHtml(query)}" 일치 ${matches.length}건 - 선택하세요`;
 
-    manualSuggestions.innerHTML = '<div class="sg-hint">' + hint + '</div>' + shown.map(([key, value]) => (
-      '<button type="button" class="suggestion-row" data-key="' + escapeHtml(key) + '">' +
-        '<span class="sg-key">' + escapeHtml(key) + '</span>' +
-        '<span class="sg-value">' + escapeHtml(value) + '</span>' +
-      '</button>'
-    )).join('');
+    manualSuggestions.innerHTML = '<div class="sg-hint">' + hint + '</div>' + shown.map(([key, entry]) => {
+      const detail = [entry.serial, entry.hostname].filter(Boolean).join(' · ');
+      return (
+        '<button type="button" class="suggestion-row" data-key="' + escapeHtml(key) + '">' +
+          '<span class="sg-key">' + escapeHtml(key) + '</span>' +
+          '<span class="sg-value">' + escapeHtml(detail) + '</span>' +
+        '</button>'
+      );
+    }).join('');
     manualSuggestions.hidden = false;
 
     manualSuggestions.querySelectorAll('.suggestion-row').forEach((btn) => {
@@ -792,7 +827,7 @@
       hideSuggestions();
       return;
     }
-    const exactValueKey = Object.keys(barcodeDatabase).find((k) => barcodeDatabase[k] === trimmed);
+    const exactValueKey = Object.keys(barcodeDatabase).find((k) => barcodeDatabase[k].serial === trimmed);
     if (exactValueKey) {
       applyMatch(exactValueKey, barcodeDatabase[exactValueKey]);
       hideSuggestions();
@@ -812,6 +847,10 @@
       resBarcode.className = 'rr-value';
       resSerial.textContent = '일치하는 바코드가 없습니다';
       resSerial.className = 'rr-value is-miss';
+      resMac.textContent = '—';
+      resMac.className = 'rr-value is-empty';
+      resHostname.textContent = '—';
+      resHostname.className = 'rr-value is-empty';
     }
   }
 
