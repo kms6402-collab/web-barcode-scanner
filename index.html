@@ -693,35 +693,17 @@
   let videoEl = null;
   let detector = null;
 
-  function setResult(code) {
-    const trimmed = code.trim();
-    if (!trimmed) return;
-
-    // 카메라로 스캔한 값은 등록된 짧은 태그(키)일 수도, 그 태그가 가리키는
-    // 시리얼(값)이 직접 인쇄된 경우일 수도 있어 양쪽 다 정확히 일치하는지 확인한다.
-    if (barcodeDatabase[trimmed]) {
-      applyMatch(trimmed, barcodeDatabase[trimmed]);
-      return;
-    }
+  // 스캔/입력된 값이 등록된 짧은 태그(키)일 수도, 그 태그가 가리키는
+  // 시리얼(값)이 직접 인쇄된 경우일 수도 있어 양쪽 다 정확히 일치하는지 확인한다.
+  // 부분적으로만 비슷한 값은 여기서 걸러지지 않는다 - 호출부가 필요하면
+  // searchDatabase()로 별도 처리한다.
+  function findExactEntry(code) {
+    const trimmed = (code || '').trim();
+    if (!trimmed) return null;
+    if (barcodeDatabase[trimmed]) return { key: trimmed, entry: barcodeDatabase[trimmed] };
     const exactValueKey = Object.keys(barcodeDatabase).find((k) => barcodeDatabase[k].serial === trimmed);
-    if (exactValueKey) {
-      applyMatch(exactValueKey, barcodeDatabase[exactValueKey]);
-      return;
-    }
-
-    resBarcode.textContent = trimmed;
-    resBarcode.className = 'rr-value';
-    resSerial.textContent = '등록되지 않은 바코드입니다';
-    resSerial.className = 'rr-value is-miss';
-    resMac.textContent = '—';
-    resMac.className = 'rr-value is-empty';
-    resHostname.textContent = '—';
-    resHostname.className = 'rr-value is-empty';
-
-    readoutChip.textContent = trimmed;
-    readoutChip.classList.add('has-value', 'flash');
-    clearTimeout(flashTimer);
-    flashTimer = setTimeout(() => readoutChip.classList.remove('flash'), 500);
+    if (exactValueKey) return { key: exactValueKey, entry: barcodeDatabase[exactValueKey] };
+    return null;
   }
 
   function applyMatch(key, entry) {
@@ -822,14 +804,9 @@
     if (!trimmed) return;
 
     // 1) 태그(키) 또는 시리얼(값)과 정확히 일치하면 바로 확정
-    if (barcodeDatabase[trimmed]) {
-      applyMatch(trimmed, barcodeDatabase[trimmed]);
-      hideSuggestions();
-      return;
-    }
-    const exactValueKey = Object.keys(barcodeDatabase).find((k) => barcodeDatabase[k].serial === trimmed);
-    if (exactValueKey) {
-      applyMatch(exactValueKey, barcodeDatabase[exactValueKey]);
+    const exact = findExactEntry(trimmed);
+    if (exact) {
+      applyMatch(exact.key, exact.entry);
       hideSuggestions();
       return;
     }
@@ -872,11 +849,19 @@
     renderSuggestions(searchDatabase(q), q);
   });
 
+  // data.csv에 정확히 등록된 값일 때만 결과를 표시한다 - 카메라가 다른 텍스트를
+  // 잘못 읽었을 때 엉뚱한 값이 그대로 떠서 혼동을 주는 것을 막기 위해서다.
+  // DB에 없는 값은 아예 인식 실패로 취급한다.
   function onBarcodeDetected(code) {
     if (!code) return;
+    const match = findExactEntry(code);
+    if (!match) {
+      showScanMiss();
+      return;
+    }
     clearTimeout(missTimer);
     readoutChip.classList.remove('chip-miss');
-    setResult(code);
+    applyMatch(match.key, match.entry);
     if (navigator.vibrate) navigator.vibrate(120);
   }
 
