@@ -185,7 +185,7 @@
     border-radius: 16px;
     overflow: hidden;
     background: var(--mono-bg);
-    aspect-ratio: 16 / 3;
+    aspect-ratio: 4.85;
     box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 12px 28px -18px rgba(0,0,0,0.5);
   }
 
@@ -250,8 +250,8 @@
 
   .laser-line {
     position: absolute;
-    left: 6%;
-    right: 6%;
+    left: 22%;
+    right: 22%;
     top: 50%;
     height: 2px;
     transform: translateY(-1px);
@@ -267,11 +267,11 @@
 
   .laser-frame {
     position: absolute;
-    left: 6%;
-    right: 6%;
+    left: 22%;
+    right: 22%;
     top: 50%;
-    height: 17px;
-    transform: translateY(-8.5px);
+    height: 19px;
+    transform: translateY(-9.5px);
     border-left: 2px solid rgba(255,59,59,0.9);
     border-right: 2px solid rgba(255,59,59,0.9);
   }
@@ -280,7 +280,7 @@
     position: absolute;
     left: 50%;
     top: 50%;
-    transform: translate(-50%, calc(-50% - 10px));
+    transform: translate(-50%, calc(-50% - 11px));
     max-width: 88%;
     padding: 3px 8px;
     border-radius: 6px;
@@ -341,6 +341,16 @@
 
   .shutter-btn:active { transform: scale(0.92); }
   .shutter-btn:disabled { opacity: 0.55; }
+
+  .shutter-btn.is-scanning {
+    background: var(--danger);
+    animation: shutter-pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes shutter-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(196,56,59,0.45); }
+    50% { box-shadow: 0 0 0 8px rgba(196,56,59,0); }
+  }
 
   .shutter-caption {
     font-size: 9px;
@@ -565,7 +575,7 @@
 
     <div class="shutter-wrap" id="shutter-wrap" hidden>
       <button class="shutter-btn" id="shutter-btn" aria-label="바코드 스캔">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+        <svg id="shutter-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
       </button>
       <span class="shutter-caption">탭해서 스캔</span>
     </div>
@@ -692,6 +702,7 @@
   const toggleLabel = document.getElementById('toggle-label');
   const shutterWrap = document.getElementById('shutter-wrap');
   const shutterBtn = document.getElementById('shutter-btn');
+  const shutterIcon = document.getElementById('shutter-icon');
   const engineNote = document.getElementById('engine-note');
   const resBarcode = document.getElementById('res-barcode');
   const resSerial = document.getElementById('res-serial');
@@ -700,6 +711,32 @@
 
   const ICON_PLAY = '<polygon points="6 3 20 12 6 21 6 3"></polygon>';
   const ICON_STOP = '<rect x="5" y="5" width="14" height="14" rx="2"></rect>';
+  const ICON_SHUTTER = '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>';
+
+  // 화면의 스캔 라인 가이드(좌우 22% 여백)와 정확히 같은 영역만 잘라내서
+  // 판독기에 넘긴다 - 화면에 다른 바코드가 붙어 있어도 그 영역 밖은 아예
+  // 보이지 않으므로 엉뚱한 바코드가 잡히지 않고, 그 좁은 영역만 확대해서
+  // 분석하는 효과가 있어 작은 바코드의 인식률도 함께 올라간다.
+  const ROI = { xPct: 0.22, wPct: 0.56, yPct: 0.175, hPct: 0.65 };
+  const ROI_MIN_WIDTH = 900;
+
+  function getRoiCanvas() {
+    const vw = videoEl && videoEl.videoWidth;
+    const vh = videoEl && videoEl.videoHeight;
+    if (!vw || !vh) return null;
+
+    const sx = vw * ROI.xPct;
+    const sy = vh * ROI.yPct;
+    const sw = vw * ROI.wPct;
+    const sh = vh * ROI.hPct;
+    const scale = sw < ROI_MIN_WIDTH ? ROI_MIN_WIDTH / sw : 1;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(sw * scale);
+    canvas.height = Math.round(sh * scale);
+    canvas.getContext('2d').drawImage(videoEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
 
   // Code 128은 문자+숫자+하이픈이 섞여도 정확히 읽히는 반면, QuaggaJS의
   // code_128_reader는 이런 혼합 바코드에서 종종 앞/뒤 문자를 놓친다.
@@ -713,6 +750,12 @@
   let cameraStream = null;
   let videoEl = null;
   let detector = null;
+  let scanLoopTimer = null;
+  let scanLoopDeadline = 0;
+  let scanLoopActive = false;
+
+  const SCAN_LOOP_INTERVAL = 350;
+  const SCAN_LOOP_TIMEOUT = 20000;
 
   // 스캔/입력된 값이 등록된 짧은 태그(키)일 수도, 그 태그가 가리키는
   // 시리얼(값)이 직접 인쇄된 경우일 수도 있어 양쪽 다 정확히 일치하는지 확인한다.
@@ -791,6 +834,7 @@
       btn.addEventListener('click', () => {
         const key = btn.getAttribute('data-key');
         manualInput.value = key;
+        searchCommitted = true;
         applyMatch(key, barcodeDatabase[key]);
         hideSuggestions();
       });
@@ -823,6 +867,7 @@
   function handleManualSearch() {
     const trimmed = manualInput.value.trim();
     if (!trimmed) return;
+    searchCommitted = true;
 
     // 1) 태그(키) 또는 시리얼(값)과 정확히 일치하면 바로 확정
     const exact = findExactEntry(trimmed);
@@ -854,10 +899,20 @@
 
   const manualInput = document.getElementById('manual-input');
   const manualSuggestions = document.getElementById('manual-suggestions');
+  // 검색을 한 번 확정한 뒤 입력창을 다시 탭하면, 새로 입력할 수 있도록
+  // 이전 검색어를 자동으로 지워준다(매번 직접 지우고 입력하는 수고를 없앤다).
+  let searchCommitted = false;
 
   document.getElementById('manual-btn').addEventListener('click', handleManualSearch);
   manualInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleManualSearch();
+  });
+  manualInput.addEventListener('focus', () => {
+    if (searchCommitted) {
+      manualInput.value = '';
+      searchCommitted = false;
+      hideSuggestions();
+    }
   });
 
   // 입력하는 동안에도 두 글자 이상이면 실시간으로 후보를 보여준다
@@ -869,22 +924,6 @@
     }
     renderSuggestions(searchDatabase(q), q);
   });
-
-  // data.csv에 정확히 등록된 값일 때만 결과를 표시한다 - 카메라가 다른 텍스트를
-  // 잘못 읽었을 때 엉뚱한 값이 그대로 떠서 혼동을 주는 것을 막기 위해서다.
-  // DB에 없는 값은 아예 인식 실패로 취급한다.
-  function onBarcodeDetected(code) {
-    if (!code) return;
-    const match = findExactEntry(code);
-    if (!match) {
-      showScanMiss();
-      return;
-    }
-    clearTimeout(missTimer);
-    readoutChip.classList.remove('chip-miss');
-    applyMatch(match.key, match.entry);
-    if (navigator.vibrate) navigator.vibrate(120);
-  }
 
   function showScanMiss() {
     readoutChip.classList.remove('has-value');
@@ -926,8 +965,25 @@
     engineNote.hidden = !text;
   }
 
+  // 지원 기기에서는 카메라 자체의 광학/디지털 줌을 걸어 확대된 상태로
+  // 스캔을 시작한다 - 작은 바코드가 프레임에서 차지하는 비중을 실제로
+  // 키워줘서(getRoiCanvas의 크롭과는 별개로) 인식률을 추가로 높여준다.
+  // 이 API를 지원하지 않는 브라우저(iOS Safari 등)에서는 조용히 무시된다.
+  async function applyStartupZoom(stream) {
+    const [track] = stream.getVideoTracks();
+    if (!track || typeof track.getCapabilities !== 'function') return;
+    try {
+      const caps = track.getCapabilities();
+      if (!caps.zoom) return;
+      const target = Math.min(caps.zoom.max, Math.max(caps.zoom.min, caps.zoom.min + (caps.zoom.max - caps.zoom.min) * 0.35));
+      await track.applyConstraints({ advanced: [{ zoom: target }] });
+    } catch (err) {
+      // 줌 미지원/실패는 치명적이지 않음 - 기본 배율로 계속 진행
+    }
+  }
+
   // 카메라 미리보기는 항상 이 함수 하나로 켠다 - 연속 인식 루프는 돌리지 않고,
-  // 셔터 버튼을 탭할 때마다 그 순간의 프레임 한 장만 판독한다(오탐/값 요동 방지).
+  // 셔터 버튼을 누르고 있는 동안에만 반복 판독한다(오탐/값 요동 방지).
   async function startScanner() {
     if (isScanning) return;
 
@@ -935,8 +991,9 @@
       cameraStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 960 }
+          width: { ideal: 1920 },
+          height: { ideal: 1440 },
+          focusMode: 'continuous'
         },
         audio: false
       });
@@ -945,6 +1002,8 @@
       showPlaceholder(describeCameraError(err), true);
       return;
     }
+
+    await applyStartupZoom(cameraStream);
 
     videoEl = document.createElement('video');
     videoEl.setAttribute('playsinline', '');
@@ -985,8 +1044,17 @@
     markLive();
   }
 
+  function stopScanLoop() {
+    scanLoopActive = false;
+    clearTimeout(scanLoopTimer);
+    scanLoopTimer = null;
+    shutterBtn.classList.remove('is-scanning');
+    shutterIcon.innerHTML = ICON_SHUTTER;
+  }
+
   function stopScanner() {
     if (!isScanning) return;
+    stopScanLoop();
     if (cameraStream) {
       cameraStream.getTracks().forEach((t) => t.stop());
       cameraStream = null;
@@ -1000,42 +1068,75 @@
     setEngineNote('');
   }
 
-  function captureAndScan() {
-    if (!isScanning || !videoEl || shutterBtn.disabled) return;
-
-    shutterBtn.disabled = true;
-    clearTimeout(missTimer);
-    readoutChip.classList.remove('has-value', 'chip-miss');
-    readoutChip.textContent = '분석 중…';
-
+  // 프레임 한 장(ROI로 잘라낸 캔버스)을 판독해서 성공 시 원문 코드 문자열,
+  // 실패 시 null을 반환한다. 엔진 종류와 무관하게 같은 인터페이스로 쓴다.
+  function decodeCanvas(canvas) {
     if (engine === 'native' && detector) {
-      detector.detect(videoEl)
-        .then((codes) => {
-          if (codes && codes.length > 0) onBarcodeDetected(codes[0].rawValue);
-          else showScanMiss();
-        })
-        .catch(() => showScanMiss())
-        .finally(() => { shutterBtn.disabled = false; });
+      return detector.detect(canvas)
+        .then((codes) => (codes && codes.length > 0 ? codes[0].rawValue : null))
+        .catch(() => null);
+    }
+    return new Promise((resolve) => {
+      Quagga.decodeSingle({
+        src: canvas.toDataURL('image/png'),
+        numOfWorkers: 0,
+        inputStream: { size: Math.max(canvas.width, canvas.height) },
+        decoder: { readers: ['code_128_reader', 'ean_reader', 'ean_8_reader', 'code_39_reader'] },
+        locate: true
+      }, (result) => {
+        resolve((result && result.codeResult && result.codeResult.code) || null);
+      });
+    });
+  }
+
+  function runScanAttempt() {
+    if (!scanLoopActive || !isScanning) return;
+    if (Date.now() > scanLoopDeadline) {
+      stopScanLoop();
+      showScanMiss();
       return;
     }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = videoEl.videoWidth || 1280;
-    canvas.height = videoEl.videoHeight || 960;
-    canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+    const roiCanvas = getRoiCanvas();
+    const decodePromise = roiCanvas ? decodeCanvas(roiCanvas) : Promise.resolve(null);
 
-    Quagga.decodeSingle({
-      src: canvas.toDataURL('image/png'),
-      numOfWorkers: 0,
-      inputStream: { size: Math.max(canvas.width, canvas.height) },
-      decoder: { readers: ['code_128_reader', 'ean_reader', 'ean_8_reader', 'code_39_reader'] },
-      locate: true
-    }, (result) => {
-      shutterBtn.disabled = false;
-      const code = result && result.codeResult && result.codeResult.code;
-      if (code) onBarcodeDetected(code);
-      else showScanMiss();
+    decodePromise.then((code) => {
+      if (!scanLoopActive || !isScanning) return; // 대기 중 취소됐거나 카메라가 꺼졌으면 무시
+
+      const match = code ? findExactEntry(code) : null;
+      if (match) {
+        stopScanLoop();
+        clearTimeout(missTimer);
+        readoutChip.classList.remove('chip-miss');
+        applyMatch(match.key, match.entry);
+        if (navigator.vibrate) navigator.vibrate(120);
+        return;
+      }
+      scanLoopTimer = setTimeout(runScanAttempt, SCAN_LOOP_INTERVAL);
     });
+  }
+
+  // 셔터를 한 번 누르면 일치하는 값을 찾을 때까지(최대 SCAN_LOOP_TIMEOUT) 계속
+  // 반복 판독하고, 찾는 즉시 멈춘다. 스캔 중 다시 누르면 취소된다.
+  function captureAndScan() {
+    if (!isScanning || !videoEl) return;
+
+    if (scanLoopActive) {
+      stopScanLoop();
+      readoutChip.classList.remove('has-value', 'chip-miss');
+      readoutChip.textContent = '탭해서 스캔';
+      return;
+    }
+
+    scanLoopActive = true;
+    shutterBtn.classList.add('is-scanning');
+    shutterIcon.innerHTML = ICON_STOP;
+    clearTimeout(missTimer);
+    readoutChip.classList.remove('has-value', 'chip-miss');
+    readoutChip.textContent = '스캔 중…';
+
+    scanLoopDeadline = Date.now() + SCAN_LOOP_TIMEOUT;
+    runScanAttempt();
   }
 
   toggleBtn.addEventListener('click', () => {
