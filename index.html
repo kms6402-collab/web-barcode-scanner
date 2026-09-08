@@ -358,6 +358,28 @@
     color: var(--text-muted);
   }
 
+  .zoom-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px;
+  }
+
+  .zoom-row .zoom-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    flex: none;
+    width: 12px;
+    text-align: center;
+  }
+
+  .zoom-row input[type="range"] {
+    flex: 1;
+    min-width: 0;
+    height: 20px;
+    accent-color: var(--accent);
+  }
+
   .manual-group {
     display: flex;
     flex-direction: column;
@@ -404,7 +426,7 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
-    max-height: 160px;
+    max-height: 200px;
     overflow-y: auto;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -580,6 +602,12 @@
       <span class="shutter-caption">탭해서 스캔</span>
     </div>
 
+    <div class="zoom-row" id="zoom-row" hidden>
+      <span class="zoom-label">－</span>
+      <input type="range" id="zoom-slider" min="0" max="1" step="0.01" value="0" aria-label="카메라 줌">
+      <span class="zoom-label">＋</span>
+    </div>
+
     <p class="engine-note" id="engine-note" hidden></p>
 
     <div class="manual-group">
@@ -703,6 +731,8 @@
   const shutterWrap = document.getElementById('shutter-wrap');
   const shutterBtn = document.getElementById('shutter-btn');
   const shutterIcon = document.getElementById('shutter-icon');
+  const zoomRow = document.getElementById('zoom-row');
+  const zoomSlider = document.getElementById('zoom-slider');
   const engineNote = document.getElementById('engine-note');
   const resBarcode = document.getElementById('res-barcode');
   const resSerial = document.getElementById('res-serial');
@@ -753,20 +783,50 @@
   let scanLoopTimer = null;
   let scanLoopDeadline = 0;
   let scanLoopActive = false;
+  let activeVideoTrack = null;
+  let zoomCaps = null;
 
   const SCAN_LOOP_INTERVAL = 350;
   const SCAN_LOOP_TIMEOUT = 20000;
 
-  // 스캔/입력된 값이 등록된 짧은 태그(키)일 수도, 그 태그가 가리키는
-  // 시리얼(값)이 직접 인쇄된 경우일 수도 있어 양쪽 다 정확히 일치하는지 확인한다.
+  // MAC 주소 라벨은 콜론/하이픈 없이 12자리 16진수만 찍혀 나오는 경우가 많아
+  // (예: F45424 68C940) data.csv에 저장된 "F4:54:24:68:C9:40"과 글자 그대로는
+  // 다르다 - 구분자를 다 지우고 대문자 16진수만 남겨 비교해야 같은 주소로 인식된다.
+  function normalizeMac(value) {
+    return (value || '').toUpperCase().replace(/[^0-9A-F]/g, '');
+  }
+
+  // 스캔/입력된 값이 등록된 짧은 태그(키)일 수도, 그 태그가 가리키는 시리얼일
+  // 수도, 장비에 붙은 MAC 주소나 Hostname이 직접 인쇄된 경우일 수도 있어
+  // 넷 다 정확히 일치하는지 확인한다(MAC은 구분자 무시하고 비교).
   // 부분적으로만 비슷한 값은 여기서 걸러지지 않는다 - 호출부가 필요하면
   // searchDatabase()로 별도 처리한다.
   function findExactEntry(code) {
     const trimmed = (code || '').trim();
     if (!trimmed) return null;
-    if (barcodeDatabase[trimmed]) return { key: trimmed, entry: barcodeDatabase[trimmed] };
-    const exactValueKey = Object.keys(barcodeDatabase).find((k) => barcodeDatabase[k].serial === trimmed);
-    if (exactValueKey) return { key: exactValueKey, entry: barcodeDatabase[exactValueKey] };
+
+    if (Object.prototype.hasOwnProperty.call(barcodeDatabase, trimmed)) {
+      return { key: trimmed, entry: barcodeDatabase[trimmed] };
+    }
+
+    const keys = Object.keys(barcodeDatabase);
+
+    const bySerial = keys.find((k) => barcodeDatabase[k].serial === trimmed);
+    if (bySerial) return { key: bySerial, entry: barcodeDatabase[bySerial] };
+
+    const normalizedInput = normalizeMac(trimmed);
+    if (normalizedInput.length === 12) {
+      const byMac = keys.find((k) => normalizeMac(barcodeDatabase[k].mac) === normalizedInput);
+      if (byMac) return { key: byMac, entry: barcodeDatabase[byMac] };
+    }
+
+    const lowerTrimmed = trimmed.toLowerCase();
+    const byHostname = keys.find((k) => {
+      const hostname = barcodeDatabase[k].hostname;
+      return hostname && hostname.toLowerCase() === lowerTrimmed;
+    });
+    if (byHostname) return { key: byHostname, entry: barcodeDatabase[byHostname] };
+
     return null;
   }
 
@@ -814,9 +874,12 @@
       hideSuggestions();
       return;
     }
-    const shown = matches.slice(0, 8);
+    // 예전엔 8건까지만 보여줘서, 흔한 검색어(예: "STOCK")로 찾을 때 정작 찾는
+    // 항목이 목록에 없는 것처럼 보이는 문제가 있었다 - 스크롤로 다 볼 수 있게
+    // 상한을 크게 늘렸다.
+    const shown = matches.slice(0, 60);
     const hint = matches.length > shown.length
-      ? `"${escapeHtml(query)}" 일치 ${matches.length}건 중 ${shown.length}건 표시`
+      ? `"${escapeHtml(query)}" 일치 ${matches.length}건 중 ${shown.length}건 표시 (더 구체적으로 입력하면 좁혀집니다)`
       : `"${escapeHtml(query)}" 일치 ${matches.length}건 - 선택하세요`;
 
     manualSuggestions.innerHTML = '<div class="sg-hint">' + hint + '</div>' + shown.map(([key, entry]) => {
@@ -965,22 +1028,41 @@
     engineNote.hidden = !text;
   }
 
-  // 지원 기기에서는 카메라 자체의 광학/디지털 줌을 걸어 확대된 상태로
-  // 스캔을 시작한다 - 작은 바코드가 프레임에서 차지하는 비중을 실제로
-  // 키워줘서(getRoiCanvas의 크롭과는 별개로) 인식률을 추가로 높여준다.
-  // 이 API를 지원하지 않는 브라우저(iOS Safari 등)에서는 조용히 무시된다.
+  // 지원 기기에서는 카메라 자체의 광학/디지털 줌을 걸어 확대된 상태로 스캔을
+  // 시작한다 - 작은 바코드(특히 장비 뒷면의 자그마한 MAC 주소 라벨)가
+  // 프레임에서 차지하는 비중을 실제로 키워줘서 인식률을 추가로 높여준다.
+  // 자동으로 건 배율이 라벨 크기에 안 맞을 수 있으니, 슬라이더도 함께
+  // 노출해서 사용자가 직접 더 당기거나 풀 수 있게 한다. 이 API를 지원하지
+  // 않는 브라우저(iOS Safari 등)에서는 슬라이더째로 조용히 숨겨진다.
   async function applyStartupZoom(stream) {
     const [track] = stream.getVideoTracks();
+    activeVideoTrack = track || null;
+    zoomCaps = null;
+    zoomRow.hidden = true;
     if (!track || typeof track.getCapabilities !== 'function') return;
+
     try {
       const caps = track.getCapabilities();
       if (!caps.zoom) return;
-      const target = Math.min(caps.zoom.max, Math.max(caps.zoom.min, caps.zoom.min + (caps.zoom.max - caps.zoom.min) * 0.35));
+      zoomCaps = caps.zoom;
+
+      const target = Math.min(caps.zoom.max, Math.max(caps.zoom.min, caps.zoom.min + (caps.zoom.max - caps.zoom.min) * 0.5));
       await track.applyConstraints({ advanced: [{ zoom: target }] });
+
+      zoomSlider.min = String(caps.zoom.min);
+      zoomSlider.max = String(caps.zoom.max);
+      zoomSlider.step = String(caps.zoom.step || (caps.zoom.max - caps.zoom.min) / 20 || 0.1);
+      zoomSlider.value = String(target);
+      zoomRow.hidden = false;
     } catch (err) {
       // 줌 미지원/실패는 치명적이지 않음 - 기본 배율로 계속 진행
     }
   }
+
+  zoomSlider.addEventListener('input', () => {
+    if (!activeVideoTrack || !zoomCaps) return;
+    activeVideoTrack.applyConstraints({ advanced: [{ zoom: Number(zoomSlider.value) }] }).catch(() => {});
+  });
 
   // 카메라 미리보기는 항상 이 함수 하나로 켠다 - 연속 인식 루프는 돌리지 않고,
   // 셔터 버튼을 누르고 있는 동안에만 반복 판독한다(오탐/값 요동 방지).
@@ -991,8 +1073,8 @@
       cameraStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1440 },
+          width: { ideal: 3840 },
+          height: { ideal: 2160 },
           focusMode: 'continuous'
         },
         audio: false
@@ -1062,6 +1144,9 @@
     videoEl = null;
     detector = null;
     engine = null;
+    activeVideoTrack = null;
+    zoomCaps = null;
+    zoomRow.hidden = true;
     interactiveEl.innerHTML = '';
     resetToggle();
     showPlaceholder('카메라 시작 후 버튼으로 스캔', false);
@@ -1082,6 +1167,10 @@
         numOfWorkers: 0,
         inputStream: { size: Math.max(canvas.width, canvas.height) },
         decoder: { readers: ['code_128_reader', 'ean_reader', 'ean_8_reader', 'code_39_reader'] },
+        // 기본값(halfSample:true)은 위치 탐색 단계에서 해상도를 절반으로
+        // 줄여버려서 작은 바코드를 놓치기 쉽다 - 이미 ROI로 크롭한 작은
+        // 이미지라 성능 여유가 있으니 원본 해상도 그대로 탐색한다.
+        locator: { patchSize: 'large', halfSample: false },
         locate: true
       }, (result) => {
         resolve((result && result.codeResult && result.codeResult.code) || null);
